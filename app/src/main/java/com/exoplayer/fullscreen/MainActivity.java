@@ -22,6 +22,7 @@ import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.Timeline;
+import com.google.android.exoplayer2.source.ConcatenatingMediaSource;
 import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.TrackGroupArray;
@@ -32,6 +33,9 @@ import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
 import com.google.android.exoplayer2.util.Util;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
     SimpleExoPlayer player;
@@ -40,6 +44,11 @@ public class MainActivity extends AppCompatActivity {
     boolean fullscreen = false;
     private TextView textViewSpeed;
     private TextView textViewPlus;
+    private List<Uri> uri = new ArrayList<>();
+
+    private boolean playWhenReady = true;
+    private int currentWindow = 0;
+    private long playbackPosition = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,16 +60,16 @@ public class MainActivity extends AppCompatActivity {
         fullscreenButton = playerView.findViewById(R.id.exo_fullscreen_icon);
         textViewSpeed = findViewById(R.id.tv_speed);
         textViewPlus = findViewById(R.id.tv_plus);
+        uri.add(Uri.parse("http://html5videoformatconverter.com/data/images/happyfit2.mp4"));
+        uri.add(Uri.parse("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"));
+        uri.add(Uri.parse("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"));
+        uri.add(Uri.parse("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"));
+        handleFullAndHalfScreen();
 
-        textViewPlus.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Toast.makeText(MainActivity.this,"Clicked",Toast.LENGTH_LONG).show();
-            }
-        });
 
-        boolean x = player.getPlayWhenReady();
-        Log.d(TAG, "onCreate: xxxxxxx" + x);
+    }
+
+    private void handleFullAndHalfScreen() {
         fullscreenButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -103,18 +112,25 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
 
-        playerView.setPlayer(player);
-        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT);
+    private MediaSource buildMediaSource(List<Uri> uri) {
+        // These factories are used to construct two media sources below
+        DataSource.Factory dataSourceFactory =
+                new DefaultDataSourceFactory(this, "exoplayer-codelab");
+        ProgressiveMediaSource.Factory mediaSourceFactory =
+                new ProgressiveMediaSource.Factory(dataSourceFactory);
 
-        DataSource.Factory dataSourceFactory = new DefaultDataSourceFactory(getApplicationContext(), Util.getUserAgent(getApplicationContext(), getApplicationContext().getString(R.string.app_name)));
+        List<MediaSource> mediaSources = new ArrayList<>();
+        ConcatenatingMediaSource x = new ConcatenatingMediaSource();
 
-        MediaSource videoSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(Uri.parse("http://html5videoformatconverter.com/data/images/happyfit2.mp4"));
+        for (int i = 0; i < 4; i++) {
+            mediaSources.add(mediaSourceFactory.createMediaSource(uri.get(i)));
+            x.addMediaSource(mediaSources.get(i));
 
-        player.prepare(videoSource);
-        player.setPlayWhenReady(true);
+        }
 
+        return x;
     }
 
     @Override
@@ -129,4 +145,61 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
     }
 
+    @Override
+    public void onStart() {
+        super.onStart();
+        if (Util.SDK_INT > 23) {
+            initializePlayer();
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        hideSystemUi();
+        if ((Util.SDK_INT <= 23 || player == null)) {
+            initializePlayer();
+        }
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        if (Util.SDK_INT > 23) {
+            releasePlayer();
+        }
+    }
+
+    private void initializePlayer() {
+        player = ExoPlayerFactory.newSimpleInstance(this);
+        playerView.setPlayer(player);
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT);
+
+        MediaSource mediaSource = buildMediaSource(uri);
+
+        player.setPlayWhenReady(playWhenReady);
+        player.seekTo(currentWindow, playbackPosition);
+        player.prepare(mediaSource, false, false);
+
+        player.setPlayWhenReady(true);
+    }
+
+    private void releasePlayer() {
+        if (player != null) {
+            playbackPosition = player.getCurrentPosition();
+            currentWindow = player.getCurrentWindowIndex();
+            playWhenReady = player.getPlayWhenReady();
+            player.release();
+            player = null;
+        }
+    }
+
+    private void hideSystemUi() {
+        playerView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LOW_PROFILE
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
+    }
 }
